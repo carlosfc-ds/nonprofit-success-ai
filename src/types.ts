@@ -10,6 +10,11 @@ export interface Business {
   certified: boolean;
   address?: string;
   createdAt: any;
+  // ProPublica / IRS nonprofit verification — populated at registration for
+  // nonprofits when a high-confidence match is found (see lib/proPublica.ts).
+  ppVerified?: boolean;
+  ppName?: string;  // official IRS name of the matched org
+  ppNtee?: string;  // NTEE classification code, e.g. "O50"
 }
 
 export type EngagementStage = 'initial_meeting' | 'budget_check' | 'data_ethics_committee' | 'scoping' | 'hackathon_ready' | 'membership';

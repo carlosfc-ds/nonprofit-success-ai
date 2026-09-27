@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { Business } from '../../types';
+import { searchOrganizations, matchNonprofit } from '../../lib/proPublica';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Building2, ChevronRight, Info, CheckCircle2, Circle, X, Layers } from 'lucide-react';
+import { Plus, Building2, ChevronRight, Info, CheckCircle2, Circle, X, Layers, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard({ isDemo }: { isDemo?: boolean }) {
@@ -11,6 +12,8 @@ export default function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newBusiness, setNewBusiness] = useState({ name: '', type: 'small_business' as any, industry: '', address: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [statusNote, setStatusNote] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -69,18 +72,49 @@ export default function Dashboard({ isDemo }: { isDemo?: boolean }) {
   const handleAddBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth.currentUser) return;
+    setSubmitting(true);
+    setStatusNote(null);
+
+    // Match nonprofits against their IRS/ProPublica record. ProPublica only
+    // covers tax-exempt orgs, so small businesses skip this step. Best-effort:
+    // a search failure must never block registration.
+    let verification: Partial<Business> = {};
+    if (newBusiness.type === 'nonprofit') {
+      try {
+        setStatusNote('Verifying against IRS records…');
+        const { organizations } = await searchOrganizations(
+          { q: newBusiness.name, state: 'NY' },
+          { isDemo },
+        );
+        const match = matchNonprofit(newBusiness.name, organizations);
+        if (match && match.confidence === 'high') {
+          verification = {
+            ein: match.ein,
+            ppVerified: true,
+            ppName: match.name,
+            ppNtee: match.ntee_code ?? '',
+          };
+        }
+      } catch (err) {
+        console.error('ProPublica verification failed', err);
+      }
+    }
 
     try {
       await addDoc(collection(db, 'businesses'), {
         ...newBusiness,
+        ...verification,
         ownerId: auth.currentUser.uid,
         certified: false,
         createdAt: serverTimestamp(),
       });
       setShowAddModal(false);
       setNewBusiness({ name: '', type: 'small_business', industry: '', address: '' });
+      setStatusNote(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'businesses');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -169,12 +203,20 @@ export default function Dashboard({ isDemo }: { isDemo?: boolean }) {
                 }`}>
                   {business.type.replace('_', ' ')}
                 </div>
-                {business.certified && (
-                  <div className="flex items-center gap-1.5 text-dssg-orange text-[10px] font-bold uppercase tracking-wider">
-                    <CheckCircle2 size={14} />
-                    SBS Certified
-                  </div>
-                )}
+                <div className="flex flex-col items-end gap-1.5">
+                  {business.certified && (
+                    <div className="flex items-center gap-1.5 text-dssg-orange text-[10px] font-bold uppercase tracking-wider">
+                      <CheckCircle2 size={14} />
+                      SBS Certified
+                    </div>
+                  )}
+                  {business.ppVerified && (
+                    <div className="flex items-center gap-1.5 text-emerald-600 text-[10px] font-bold uppercase tracking-wider" title={business.ppName || undefined}>
+                      <ShieldCheck size={14} />
+                      IRS Verified
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="mb-10">
@@ -182,6 +224,9 @@ export default function Dashboard({ isDemo }: { isDemo?: boolean }) {
                   {business.name}
                 </h3>
                 <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mt-2">{business.industry || 'General Industry'}</p>
+                {business.ppVerified && business.ein && (
+                  <p className="text-emerald-600 text-[10px] font-mono font-medium mt-1">EIN {business.ein}</p>
+                )}
               </div>
 
               <div className="flex items-center justify-between mt-auto pt-6 border-t border-slate-50">
@@ -259,11 +304,12 @@ export default function Dashboard({ isDemo }: { isDemo?: boolean }) {
                   </div>
 
                   <div className="pt-6">
-                    <button 
+                    <button
                       type="submit"
-                      className="w-full py-4 bg-dssg-orange text-white rounded-xl font-bold shadow-lg shadow-orange-900/10 hover:bg-dssg-orange-light hover:-translate-y-0.5 active:translate-y-0 transition-all font-display"
+                      disabled={submitting}
+                      className="w-full py-4 bg-dssg-orange text-white rounded-xl font-bold shadow-lg shadow-orange-900/10 hover:bg-dssg-orange-light hover:-translate-y-0.5 active:translate-y-0 transition-all font-display disabled:opacity-60 disabled:hover:translate-y-0"
                     >
-                      Process Registration
+                      {submitting ? (statusNote ?? 'Processing…') : 'Process Registration'}
                     </button>
                   </div>
                 </form>

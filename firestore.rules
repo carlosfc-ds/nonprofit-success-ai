@@ -52,7 +52,10 @@ service cloud.firestore {
              data.ownerId == request.auth.uid &&
              (data.get('ein', '') is string && data.get('ein', '').size() <= 64) &&
              (data.get('industry', '') is string && data.get('industry', '').size() <= 128) &&
-             (data.get('certified', false) is bool);
+             (data.get('certified', false) is bool) &&
+             (data.get('ppVerified', false) is bool) &&
+             (data.get('ppName', '') is string && data.get('ppName', '').size() <= 256) &&
+             (data.get('ppNtee', '') is string && data.get('ppNtee', '').size() <= 16);
     }
 
     function isValidEngagement(data) {
@@ -108,7 +111,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidId(businessId) && isValidBusiness(incoming());
       allow update: if isOwner(existing().ownerId) && isValidBusiness(incoming()) &&
                     incoming().ownerId == existing().ownerId &&
-                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'type', 'ein', 'industry', 'certified', 'address', 'updatedAt']);
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'type', 'ein', 'industry', 'certified', 'address', 'updatedAt', 'ppVerified', 'ppName', 'ppNtee']);
       allow delete: if isOwner(existing().ownerId);
     }
 

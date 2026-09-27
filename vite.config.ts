@@ -19,6 +19,13 @@ export default defineConfig(({mode}) => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      // Forward API calls to the ProPublica proxy (server.ts, `npm run server`).
+      proxy: {
+        '/api': {
+          target: `http://localhost:${process.env.SEARCH_PROXY_PORT || 3001}`,
+          changeOrigin: true,
+        },
+      },
       watch: {
         // OneDrive intermittently locks this file (cloud sync/placeholder), which
         // crashes chokidar's Windows fs watcher with an uncaught EBUSY error.
